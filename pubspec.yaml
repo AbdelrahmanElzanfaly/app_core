@@ -1,0 +1,31 @@
+name: app_core
+description: Platform core — configuration, results and errors, base bloc, session and settings.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.7.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  app_network:
+    git:
+      url: https://github.com/AbdelrahmanElzanfaly/app_network.git
+      ref: v0.1.0
+
+  dio: ^5.9.0
+  equatable: ^2.0.7
+  flutter_bloc: ^9.1.1
+  flutter_secure_storage: ^11.2.0
+  get_it: ^8.2.0
+  injectable: ^3.0.0
+  shared_preferences: ^2.5.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
