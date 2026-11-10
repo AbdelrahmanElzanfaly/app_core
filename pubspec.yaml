@@ -17,6 +17,7 @@ dependencies:
       url: https://github.com/AbdelrahmanElzanfaly/app_network.git
       ref: v0.1.0
 
+  bloc: ^9.1.0
   dio: ^5.9.0
   equatable: ^2.0.7
   flutter_bloc: ^9.1.1
@@ -29,3 +30,4 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  bloc_concurrency: ^0.3.0
