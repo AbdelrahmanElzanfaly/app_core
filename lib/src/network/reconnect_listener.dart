@@ -17,6 +17,11 @@ import 'network_scope.dart';
 /// own answer (a 503, say): it is fired only if the load then failed on the
 /// transport, which leaves the monitor no longer online. No visuals: returns
 /// [child]. Does nothing without a NetworkScope.
+///
+/// The remembered reconnect belongs to [busy], not to this widget: a layout
+/// switch (mobile ↔ tablet) replaces the listener in the middle of a load,
+/// and the page's next listener on the same bloc fires it instead. Listeners
+/// sharing one [busy] fire it once between them.
 class ReconnectListener extends StatefulWidget {
   const ReconnectListener({
     super.key,
@@ -41,16 +46,24 @@ class ReconnectListener extends StatefulWidget {
   State<ReconnectListener> createState() => _ReconnectListenerState();
 }
 
-class _ReconnectListenerState extends State<ReconnectListener> {
-  NetworkMonitor? _monitor;
-  StreamSubscription<void>? _reconnects;
-
-  /// A reconnect arrived while busy; fired once the load has ended.
-  bool _missed = false;
+/// A reconnect that arrived while a load was running, waiting for it to end.
+class _Missed {
+  _Missed({required this.byRequestOnly});
 
   /// Every reconnect missed was a request getting through, which may have
   /// been the running load itself.
-  bool _missedByRequestOnly = false;
+  bool byRequestOnly;
+}
+
+class _ReconnectListenerState extends State<ReconnectListener> {
+  /// Kept on the busy signal (the bloc's `loading`), which outlives a
+  /// listener replaced by a layout switch. Weak: gone with the bloc.
+  static final Expando<_Missed> _missedByBusy = Expando(
+    'ReconnectListener.missed',
+  );
+
+  NetworkMonitor? _monitor;
+  StreamSubscription<void>? _reconnects;
 
   bool get _busy => widget.busy?.value ?? false;
 
@@ -58,6 +71,9 @@ class _ReconnectListenerState extends State<ReconnectListener> {
   void initState() {
     super.initState();
     widget.busy?.addListener(_onBusyChanged);
+    // Takes over a reconnect missed by the listener this one replaces, if
+    // that load has already ended.
+    _onBusyChanged();
   }
 
   @override
@@ -90,31 +106,41 @@ class _ReconnectListenerState extends State<ReconnectListener> {
 
   void _onReconnected() {
     if (!mounted) return;
-    if (_busy) {
+    final busy = widget.busy;
+    if (busy != null && busy.value) {
       final byRequest = _monitor?.reconnectedByRequest ?? false;
-      _missedByRequestOnly = byRequest && (_missedByRequestOnly || !_missed);
-      _missed = true;
+      final missed = _missedByBusy[busy];
+      if (missed == null) {
+        _missedByBusy[busy] = _Missed(byRequestOnly: byRequest);
+      } else {
+        missed.byRequestOnly = missed.byRequestOnly && byRequest;
+      }
     } else if (widget.enabled) {
       widget.onReconnect();
     }
   }
 
   void _onBusyChanged() {
-    if (_busy || !_missed) return;
+    final busy = widget.busy;
+    if (busy == null || busy.value || _missedByBusy[busy] == null) return;
     // After the frame: the page has rebuilt with the load's outcome, so
     // [ReconnectListener.enabled] says whether there is still anything to
     // recover.
     WidgetsBinding.instance
       ..addPostFrameCallback((_) {
-        if (!mounted || !_missed || _busy) return;
+        // Unmounted: left for the page's next listener on this signal.
+        if (!mounted || _busy || !identical(widget.busy, busy)) return;
+        final missed = _missedByBusy[busy];
+        if (missed == null) return;
         // Cleared before firing: a reload that fails again waits for the
-        // next reconnect instead of looping.
-        _missed = false;
+        // next reconnect instead of looping, and a second listener on the
+        // same signal finds nothing left to fire.
+        _missedByBusy[busy] = null;
         // The load has reported its own outcome. Still online after only a
         // request got through: that request may have been this load, which
         // then already ran against the recovered server, so a reload would
         // only repeat it.
-        if (_missedByRequestOnly &&
+        if (missed.byRequestOnly &&
             _monitor?.reachability == NetworkReachability.online) {
           return;
         }

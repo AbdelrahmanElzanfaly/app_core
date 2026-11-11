@@ -234,6 +234,90 @@ void main() {
       await tester.pump();
       expect(reloads, 1);
     });
+
+    group('a layout switch replacing the listener mid-load', () {
+      /// The page's listener under a layout key: a new key is a new
+      /// listener, as when the mobile page gives way to the tablet one.
+      Future<void> pumpLayout(WidgetTester tester, String layout) =>
+          tester.pumpWidget(
+            NetworkScope(
+              monitor: monitor,
+              child: KeyedSubtree(
+                key: ValueKey(layout),
+                child: listener(enabled: true, busy: busy),
+              ),
+            ),
+          );
+
+      testWidgets('the next listener fires the missed reconnect once the '
+          'load ends', (tester) async {
+        busy.value = true;
+        await pumpLayout(tester, 'mobile');
+        await comeBack(tester);
+
+        await pumpLayout(tester, 'tablet');
+        busy.value = false;
+        await tester.pump();
+        expect(reloads, 1);
+
+        busy
+          ..value = true
+          ..value = false;
+        await tester.pump();
+        expect(reloads, 1, reason: 'the missed reconnect fires only once');
+      });
+
+      testWidgets('in the frame the load ends, the next listener fires it', (
+        tester,
+      ) async {
+        busy.value = true;
+        await pumpLayout(tester, 'mobile');
+        await comeBack(tester);
+
+        // The old listener schedules its check, then is replaced before it
+        // runs.
+        busy.value = false;
+        await pumpLayout(tester, 'tablet');
+        await tester.pump();
+
+        expect(reloads, 1);
+      });
+
+      testWidgets('a request getting through, still online: nothing, as '
+          'before the switch', (tester) async {
+        busy.value = true;
+        await pumpLayout(tester, 'mobile');
+        await announce(tester);
+
+        await pumpLayout(tester, 'tablet');
+        busy.value = false;
+        await tester.pump();
+
+        expect(reloads, 0);
+      });
+    });
+
+    testWidgets('listeners sharing a busy signal fire a missed reconnect '
+        'once between them', (tester) async {
+      busy.value = true;
+      await tester.pumpWidget(
+        NetworkScope(
+          monitor: monitor,
+          child: Column(
+            children: [
+              listener(enabled: true, busy: busy),
+              listener(enabled: true, busy: busy),
+            ],
+          ),
+        ),
+      );
+      await comeBack(tester);
+
+      busy.value = false;
+      await tester.pump();
+
+      expect(reloads, 1);
+    });
   });
 
   group('NetworkScope', () {
