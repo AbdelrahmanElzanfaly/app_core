@@ -21,6 +21,7 @@ class AppConfig {
     this.enableDeviceSecurity = false,
     this.apiKey = '',
     this.googleMapsApiKey = '',
+    this.persistOfflineCache = false,
   });
 
   final Environment environment;
@@ -38,6 +39,11 @@ class AppConfig {
   final String storageKey;
   final String apiKey;
   final String googleMapsApiKey;
+
+  /// Whether a screen's offline copy is kept on disk (encrypted, this device
+  /// only) or only in memory for this run. Storing account data on the device
+  /// is a security and compliance decision, so it is off unless the app says so.
+  final bool persistOfflineCache;
 
   static AppConfig? _instance;
 

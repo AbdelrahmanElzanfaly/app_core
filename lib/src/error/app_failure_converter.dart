@@ -25,7 +25,9 @@ class AppFailureConverter implements NetworkErrorConverter {
     final type = switch (error.type) {
       DioExceptionType.connectionTimeout ||
       DioExceptionType.sendTimeout ||
-      DioExceptionType.receiveTimeout => FailureType.timeout,
+      DioExceptionType.receiveTimeout ||
+      DioExceptionType.transformTimeout => FailureType.timeout,
+      // Includes a request the connectivity gate refused (NoNetworkException).
       DioExceptionType.connectionError => FailureType.network,
       DioExceptionType.badResponse => switch (status) {
         401 => FailureType.unauthorized,
@@ -35,9 +37,10 @@ class AppFailureConverter implements NetworkErrorConverter {
         final s? when s >= 400 => FailureType.badRequest,
         _ => FailureType.unknown,
       },
-      _ => error.error is AppFailure
-          ? (error.error! as AppFailure).type
-          : FailureType.network,
+      _ =>
+        error.error is AppFailure
+            ? (error.error! as AppFailure).type
+            : FailureType.network,
     };
 
     return AppFailure(type, code: code, message: message, statusCode: status);

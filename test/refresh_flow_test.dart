@@ -87,4 +87,75 @@ void main() {
     expect((await results).map((r) => r.data), [42, 42, 42]);
     expect(refresher.calls, 1);
   });
+
+  group('with the connectivity gate and retries', () {
+    late FakeNetworkInterfaces interfaces;
+    late NetworkMonitor monitor;
+
+    setUp(() async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      interfaces = FakeNetworkInterfaces();
+      monitor = NetworkMonitor(interfaces);
+      // The app's client: retries on, the monitor as gate and observer. No
+      // backoff, so the test does not wait for it.
+      dio = DioManager.createDio(
+        config: const NetworkConfig(
+          baseUrl: 'https://api.test',
+          retryPolicy: RetryPolicy(baseDelay: Duration.zero),
+        ),
+        tokenStore: sessionService,
+        errorConverter: const AppFailureConverter(),
+        sessionRefresher: sessionService,
+        networkStatus: monitor,
+        reachabilityObserver: monitor,
+      )..httpClientAdapter = server;
+    });
+
+    tearDown(() => monitor.dispose());
+
+    test('interfaces down: fails as no connection at once, sends nothing, '
+        'renews nothing, and keeps the session', () async {
+      final refresher = FakeRefresher([session('fresh')]);
+      sessionService.refresher = refresher;
+      interfaces.up = false;
+      await monitor.start();
+      expect(monitor.reachability, NetworkReachability.offline);
+
+      final result = await loadItems();
+
+      expect(result.error?.type, FailureType.network);
+      expect(server.requests, 0);
+      expect(refresher.calls, 0);
+      expect(sessionService.isAuthenticated, isTrue);
+      expect(sessionService.session?.accessToken, 'expired');
+    });
+
+    test('interfaces up and the server unreachable: 3 attempts, then no '
+        'connection, and the monitor says unreachable', () async {
+      final unreachable = UnreachableServer();
+      dio.httpClientAdapter = unreachable;
+      await monitor.start();
+
+      final result = await loadItems();
+
+      expect(unreachable.requests, 3);
+      expect(result.error?.type, FailureType.network);
+      expect(monitor.reachability, NetworkReachability.unreachable);
+      expect(sessionService.isAuthenticated, isTrue);
+    });
+
+    test('a request that gets through recovers the monitor', () async {
+      sessionService.refresher = FakeRefresher([session('fresh')]);
+      await monitor.start();
+      monitor.onUnreachable();
+      var reconnects = 0;
+      monitor.reconnected.listen((_) => reconnects++);
+
+      expect((await loadItems()).data, 42);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(monitor.reachability, NetworkReachability.online);
+      expect(reconnects, 1);
+    });
+  });
 }
