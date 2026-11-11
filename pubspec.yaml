@@ -15,7 +15,7 @@ dependencies:
   app_network:
     git:
       url: https://github.com/AbdelrahmanElzanfaly/app_network.git
-      ref: eb71eca06617f4d0e75c291cc4e770112be6b5b3 # v0.2.0 once tagged
+      ref: v0.2.0
 
   bloc: ^9.1.0
   connectivity_plus: ^7.3.2
