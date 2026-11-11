@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/app_config.dart';
 import '../error/app_failure.dart';
 import 'auth_session.dart';
+import 'session_scoped.dart';
 import 'token_refresher.dart';
 
 /// Owns the signed-in session: keeps it in secure storage, and tells the
@@ -15,14 +16,22 @@ import 'token_refresher.dart';
 ///
 /// Also the [SessionRefresher] behind every authenticated client: a 401
 /// anywhere comes here to be renewed (see [refreshAccessToken]).
+///
+/// Stores that hold the user's data ([SessionScoped], such as the offline
+/// cache) are started while a session exists and emptied when it ends, before
+/// the tokens are deleted and before the router hears of it.
 class SessionService extends ChangeNotifier
     implements TokenStore, SessionRefresher {
   SessionService(
     this._storage, {
     this.retryDelay = const Duration(milliseconds: 500),
-  });
+    Iterable<SessionScoped> scoped = const [],
+  }) : _scoped = List.unmodifiable(scoped);
 
   final FlutterSecureStorage _storage;
+
+  /// Must not outlive the session: see [SessionScoped].
+  final List<SessionScoped> _scoped;
 
   /// The pause before the second renewal attempt.
   final Duration retryDelay;
@@ -58,6 +67,12 @@ class SessionService extends ChangeNotifier
       for (final key in _keys) key: await _storage.read(key: '$_prefix.$key'),
     };
     _session = AuthSession.fromJson(values);
+    if (_session != null) {
+      _startScoped();
+    } else {
+      // Signed out: also sweeps up after a launch that died mid-sign-out.
+      await _endScoped();
+    }
     notifyListeners();
   }
 
@@ -67,13 +82,39 @@ class SessionService extends ChangeNotifier
       await _storage.write(key: '$_prefix.${entry.key}', value: entry.value);
     }
     _session = session;
+    // A no-op for a renewal: the stores are already open, nothing is wiped.
+    _startScoped();
     notifyListeners();
   }
 
+  /// Ends the session. The user's data goes first, so it is gone before the
+  /// guard routes to login: on sign-out and when renewal ends the session.
   Future<void> clear() async {
+    await _endScoped();
     await _clearStorage();
     _session = null;
     notifyListeners();
+  }
+
+  void _startScoped() {
+    for (final scoped in _scoped) {
+      try {
+        scoped.onSessionStarted();
+      } catch (error) {
+        debugPrint('[SessionService] could not start $scoped: $error');
+      }
+    }
+  }
+
+  /// A store that fails never blocks sign-out; the next launch sweeps again.
+  Future<void> _endScoped() async {
+    for (final scoped in _scoped) {
+      try {
+        await scoped.onSessionEnded();
+      } catch (error) {
+        debugPrint('[SessionService] could not end $scoped: $error');
+      }
+    }
   }
 
   Future<void> _clearStorage() async {

@@ -44,6 +44,14 @@ class AppFailure extends Equatable implements Exception {
 
   final int? statusCode;
 
+  /// No usable answer for reasons outside the request itself: no connection,
+  /// too slow, or the server is down. A saved copy may stand in, and trying
+  /// again later may work. Never true for a rejected session or request.
+  bool get isTransient => switch (type) {
+    FailureType.network || FailureType.timeout || FailureType.server => true,
+    _ => false,
+  };
+
   /// Whatever was thrown, as an [AppFailure].
   factory AppFailure.from(Object error) => switch (error) {
     AppFailure() => error,

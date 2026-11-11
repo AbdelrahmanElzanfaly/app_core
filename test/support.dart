@@ -79,3 +79,79 @@ class FakeServer implements HttpClientAdapter {
 }
 
 Completer<void> gate() => Completer<void>();
+
+/// The OS interface list, scripted: [isUp] answers [up] (after [delay], or
+/// by throwing [error]), and [emit] reports a change.
+class FakeNetworkInterfaces implements NetworkInterfaces {
+  FakeNetworkInterfaces({this.up = true});
+
+  bool up;
+  Object? error;
+  Duration? delay;
+  int reads = 0;
+
+  final StreamController<bool> _changes = StreamController.broadcast();
+
+  bool get hasListener => _changes.hasListener;
+
+  @override
+  Future<bool> isUp() async {
+    reads++;
+    final delay = this.delay;
+    if (delay != null) await Future<void>.delayed(delay);
+    final error = this.error;
+    if (error != null) throw error;
+    return up;
+  }
+
+  @override
+  Stream<bool> get changes => _changes.stream;
+
+  void emit(bool value) {
+    up = value;
+    _changes.add(value);
+  }
+}
+
+/// A server that cannot be reached: every attempt fails to connect. Throws
+/// the [DioException] itself, as dio's own adapter does; anything else a
+/// custom adapter throws becomes `unknown`.
+class UnreachableServer implements HttpClientAdapter {
+  int requests = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests++;
+    throw DioException.connectionError(
+      requestOptions: options,
+      reason: 'Connection refused',
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// Records what a [SessionService] tells a session-scoped store into [log],
+/// shared so it interleaves with other events. [onEnd] runs inside
+/// [onSessionEnded], and may throw.
+class RecordingScoped implements SessionScoped {
+  RecordingScoped(this.log, {this.name = '', this.onEnd});
+
+  final List<String> log;
+  final String name;
+  final Future<void> Function()? onEnd;
+
+  @override
+  void onSessionStarted() => log.add('${name}started');
+
+  @override
+  Future<void> onSessionEnded() async {
+    log.add('${name}ended');
+    await onEnd?.call();
+  }
+}
