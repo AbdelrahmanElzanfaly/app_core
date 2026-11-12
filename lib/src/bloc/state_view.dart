@@ -4,10 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../error/app_failure.dart';
 import '../l10n/core_localizations.dart';
+import '../messages/app_messenger.dart';
 import 'base_bloc.dart';
 
 /// Renders a [BaseBloc]'s loading flag as an overlay and its errors as
-/// snack bars, around [child].
+/// error messages (`AppMessenger.showError`), around [child].
 class StateView<B extends BaseBloc<dynamic, dynamic>> extends StatefulWidget {
   const StateView({super.key, required this.bloc, required this.child});
 
@@ -39,11 +40,7 @@ class _StateViewState<B extends BaseBloc<dynamic, dynamic>>
 
   void _showError(AppFailure failure) {
     if (!mounted) return;
-    ScaffoldMessenger.maybeOf(context)
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(CoreLocalizations.of(context).describe(failure))),
-      );
+    context.showError(CoreLocalizations.of(context).describe(failure));
   }
 
   @override
