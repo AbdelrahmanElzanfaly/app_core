@@ -54,27 +54,62 @@ void main() {
 
         final style = messages.styleOf(type);
         expect(shown(tester).backgroundColor, style.background);
-        expect(shown(tester).duration, type.duration);
+        expect(shown(tester).duration, style.duration);
         expect(shown(tester).action, isNull);
         expect(
           tester.widget<Text>(find.text('Saved')).style?.color,
           style.foreground,
         );
         expect(
-          tester.widget<Icon>(find.byIcon(type.icon)).color,
+          tester.widget<Icon>(find.byIcon(style.icon)).color,
           style.foreground,
         );
       });
     }
 
-    test('every type has its own icon, and errors stay longest', () {
+    test('by default every type has its own icon, and errors stay longest', () {
+      final styles = AppMessageType.values.map(messages.styleOf);
       expect(
-        AppMessageType.values.map((type) => type.icon).toSet(),
+        styles.map((style) => style.icon).toSet(),
         hasLength(AppMessageType.values.length),
       );
-      for (final type in AppMessageType.values) {
-        expect(type.duration, lessThanOrEqualTo(AppMessageType.error.duration));
+      for (final style in styles) {
+        expect(style.duration, lessThanOrEqualTo(messages.error.duration));
       }
+    });
+
+    testWidgets('the icon, the duration and the gap come from the theme', (
+      tester,
+    ) async {
+      final custom = messages.copyWith(
+        success: messages.success.copyWith(
+          icon: Icons.thumb_up_rounded,
+          duration: const Duration(seconds: 9),
+        ),
+        iconSpacing: 20,
+      );
+      await pumpPage(
+        tester,
+        theme: ThemeData(colorScheme: scheme, extensions: [custom]),
+      );
+
+      page.showSuccess('Saved');
+      await tester.pump();
+
+      expect(find.byIcon(Icons.thumb_up_rounded), findsOneWidget);
+      expect(find.byIcon(messages.success.icon), findsNothing);
+      expect(shown(tester).duration, const Duration(seconds: 9));
+      // The gap is the only box with a width and no height; the icon has
+      // its own sized box.
+      final gap = tester
+          .widgetList<SizedBox>(
+            find.descendant(
+              of: find.byType(AppMessageContent),
+              matching: find.byType(SizedBox),
+            ),
+          )
+          .singleWhere((box) => box.height == null);
+      expect(gap.width, 20);
     });
 
     testWidgets('an action shows in the message colour and runs', (
@@ -114,7 +149,7 @@ void main() {
       await tester.pump();
 
       expect(
-        tester.getCenter(find.byIcon(AppMessageType.warning.icon)).dx,
+        tester.getCenter(find.byIcon(messages.warning.icon)).dx,
         greaterThan(tester.getCenter(find.text('Warning')).dx),
       );
     });
@@ -184,9 +219,9 @@ void main() {
           await tester.pump();
 
           expect(find.text(copy), findsOneWidget);
-          expect(find.byIcon(AppMessageType.error.icon), findsOneWidget);
+          expect(find.byIcon(messages.error.icon), findsOneWidget);
           expect(shown(tester).backgroundColor, messages.error.background);
-          expect(shown(tester).duration, AppMessageType.error.duration);
+          expect(shown(tester).duration, messages.error.duration);
         },
       );
     }
