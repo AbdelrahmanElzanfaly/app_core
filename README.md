@@ -7,6 +7,7 @@ What every feature of an app needs, in one package:
 | `AppConfig`, `Environment` | per-flavor configuration, set once in `main()` |
 | `AppFailure`, `Result`, `FutureUseCase` | one error type; repositories return `Result`, never throw |
 | `BaseBloc`, `StateView`, `SingleEffect` | loading overlay and error snack bars for free; one-shot effects |
+| `StateViewScope` | how every `StateView` presents its failures, set once by the app |
 | `SessionService` | the signed-in session: secure storage, router refresh, token renewal |
 | `NetworkMonitor`, `NetworkScope`, `ReconnectListener` | whether the servers can be reached; reload a page when they can again |
 | `SessionCache` | small offline copies of read models, emptied when the session ends |
@@ -29,6 +30,29 @@ GET/HEAD/OPTIONS requests (`RetryPolicy()`; writes are never resent), opens
 connections with a 10 s timeout (`NetworkConfig.recommendedConnectTimeout`),
 fails at once while the device has no network, and reports every request's
 outcome to the `NetworkMonitor`.
+
+## Error presentation
+
+`StateView` shows each failure from `BaseBloc.errors` as a plain snack bar
+with `CoreLocalizations`' copy. To give every screen the app's own style, put
+a `StateViewScope` in `MaterialApp.builder`; each `StateView` below then
+hands its failures to `onError` instead:
+
+```dart
+MaterialApp.router(
+  builder: (context, child) => StateViewScope(
+    onError: (context, failure) => showMyErrorSnackBar(
+      context,
+      CoreLocalizations.of(context).describe(failure),
+    ),
+    child: child!,
+  ),
+);
+```
+
+`onError` receives the `StateView`'s own context, which is below the theme,
+the localizations and the `ScaffoldMessenger`. Without a scope nothing
+changes.
 
 ## Pull to refresh
 

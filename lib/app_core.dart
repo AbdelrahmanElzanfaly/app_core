@@ -4,6 +4,7 @@ library;
 export 'src/bloc/base_bloc.dart';
 export 'src/bloc/single_effect.dart';
 export 'src/bloc/state_view.dart';
+export 'src/bloc/state_view_scope.dart';
 export 'src/cache/secure_session_cache.dart';
 export 'src/cache/session_cache.dart';
 export 'src/cache/session_cache_store.dart';
