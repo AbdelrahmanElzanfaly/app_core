@@ -30,6 +30,20 @@ connections with a 10 s timeout (`NetworkConfig.recommendedConnectTimeout`),
 fails at once while the device has no network, and reports every request's
 outcome to the `NetworkMonitor`.
 
+## Errors
+
+`BaseBloc.handleError(error)` publishes the failure on `errors`, and
+`StateView` shows it as a snack bar. Pass `showMessage: false` for a failure
+the page already presents itself, inline or in a dialog; nothing is
+published, and the feature's own state handling is unchanged:
+
+```dart
+emit(state.copyWith(hasFailed: true));
+handleError(result.error!, showMessage: false); // the page shows RoxRetryView
+```
+
+The default is `true`, so existing calls keep showing their message.
+
 ## Pull to refresh
 
 `BaseBloc.refresh(event)` dispatches a reload and returns a future that completes

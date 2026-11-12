@@ -67,8 +67,14 @@ abstract class BaseBloc<E, S> extends Bloc<E, S> {
     }
   }
 
-  void handleError(Object error) {
-    if (!_errors.isClosed) _errors.add(AppFailure.from(error));
+  /// Publishes [error] on [errors], which `StateView` shows to the user.
+  ///
+  /// Pass [showMessage] false for a failure the page already presents itself
+  /// (inline, or in a dialog): nothing is published. The feature's own state
+  /// handling is unaffected either way.
+  void handleError(Object error, {bool showMessage = true}) {
+    if (!showMessage || _errors.isClosed) return;
+    _errors.add(AppFailure.from(error));
   }
 
   @override
