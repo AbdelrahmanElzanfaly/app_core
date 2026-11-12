@@ -84,13 +84,48 @@ void main() {
     expect(light.lerp(null, 0.5), same(light));
   });
 
+  test('icons, durations and the gap: defaults, copyWith and lerp', () {
+    final theme = AppMessageTheme.fallback(
+      ColorScheme.fromSeed(seedColor: Colors.blue),
+    );
+    expect(theme.success.icon, Icons.check_circle_rounded);
+    expect(theme.warning.icon, Icons.warning_amber_rounded);
+    expect(theme.error.icon, Icons.error_rounded);
+    expect(theme.info.icon, Icons.info_rounded);
+    expect(theme.success.duration, const Duration(seconds: 3));
+    expect(theme.warning.duration, const Duration(seconds: 5));
+    expect(theme.error.duration, const Duration(seconds: 6));
+    expect(theme.info.duration, const Duration(seconds: 4));
+    expect(theme.iconSpacing, AppMessageTheme.defaultIconSpacing);
+
+    final other = theme.copyWith(
+      iconSpacing: 20,
+      info: theme.info.copyWith(icon: Icons.campaign_rounded),
+    );
+    expect(other.info.icon, Icons.campaign_rounded);
+    expect(other.info.background, theme.info.background);
+    expect(theme.lerp(other, 0.5).iconSpacing, 16);
+    expect(theme.lerp(other, 0.4).info.icon, theme.info.icon);
+    expect(theme.lerp(other, 0.6).info.icon, Icons.campaign_rounded);
+    expect(
+      AppMessageTheme.seeded(
+        ColorScheme.fromSeed(seedColor: Colors.blue),
+        success: Colors.green,
+        warning: Colors.amber,
+        iconSpacing: 8,
+      ).iconSpacing,
+      8,
+    );
+  });
+
   testWidgets('of reads the theme extension, or falls back without one', (
     tester,
   ) async {
-    final custom = AppMessageTheme.fallback(
+    final base = AppMessageTheme.fallback(
       ColorScheme.fromSeed(seedColor: Colors.blue),
-    ).copyWith(
-      success: const AppMessageStyle(
+    );
+    final custom = base.copyWith(
+      success: base.success.copyWith(
         background: Colors.black,
         foreground: Colors.white,
       ),

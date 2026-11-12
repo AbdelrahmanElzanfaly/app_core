@@ -57,7 +57,7 @@ context.showError(message, actionLabel: l10n.retry, onAction: retry);
 context.showInfo(message);
 ```
 
-Each `AppMessageType` has its own icon and duration:
+By default each `AppMessageType` has this icon and duration:
 
 | Type | Icon | Duration |
 |---|---|---|
@@ -69,22 +69,38 @@ Each `AppMessageType` has its own icon and duration:
 A new message replaces the one on screen. `StateView` shows its failures
 with `showError`, so every screen's errors look the same.
 
-The colours come from the theme. Set them once in the app's `ThemeData`:
+The whole look comes from the theme: each type's colours, icon and
+duration, and the gap between the icon and the text. Set it once in the
+app's `ThemeData`:
 
 ```dart
 ThemeData(
   colorScheme: scheme,
   snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
   extensions: [
-    AppMessageTheme.seeded(scheme, success: brandGreen, warning: brandAmber),
+    AppMessageTheme.seeded(
+      scheme,
+      success: brandGreen,
+      warning: brandAmber,
+      iconSpacing: 8, // the app's spacing token
+    ),
   ],
 );
 ```
 
 `seeded` derives success and warning from their seeds for the scheme's
 brightness, so the text keeps its contrast in light and dark. Error uses the
-scheme's error container, and info Material's own snack bar colours. A theme
-without the extension gets `AppMessageTheme.fallback`.
+scheme's error container, and info Material's own snack bar colours. Change
+one type's icon or duration with `copyWith` on its style:
+
+```dart
+final messages = AppMessageTheme.seeded(scheme, success: ..., warning: ...);
+messages.copyWith(
+  info: messages.info.copyWith(duration: const Duration(seconds: 5)),
+);
+```
+
+A theme without the extension gets `AppMessageTheme.fallback`.
 
 Call these from a page, typically its `BlocConsumer` listener for a
 `SingleEffect`; a bloc never shows messages itself. A snack bar goes away by

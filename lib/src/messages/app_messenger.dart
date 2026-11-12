@@ -76,12 +76,8 @@ extension AppMessenger on BuildContext {
       ..showSnackBar(
         SnackBar(
           backgroundColor: style.background,
-          duration: type.duration,
-          content: AppMessageContent(
-            message: message,
-            type: type,
-            color: style.foreground,
-          ),
+          duration: style.duration,
+          content: AppMessageContent(message: message, type: type),
           action:
               actionLabel == null
                   ? null
@@ -96,26 +92,32 @@ extension AppMessenger on BuildContext {
 }
 
 /// A message's content: its type's icon beside the text, laid out for the
-/// reading direction.
+/// reading direction. The icon, the colour and the gap come from the theme's
+/// [AppMessageTheme].
 class AppMessageContent extends StatelessWidget {
   const AppMessageContent({
     super.key,
     required this.message,
     required this.type,
-    required this.color,
   });
 
   final String message;
   final AppMessageType type;
-  final Color color;
 
   @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Icon(type.icon, color: color),
-      const SizedBox(width: 12),
-      // Merges with the snack bar's own text style; only the colour changes.
-      Expanded(child: Text(message, style: TextStyle(color: color))),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final theme = AppMessageTheme.of(context);
+    final style = theme.styleOf(type);
+    return Row(
+      children: [
+        Icon(style.icon, color: style.foreground),
+        SizedBox(width: theme.iconSpacing),
+        // Merges with the snack bar's own text style; only the colour
+        // changes.
+        Expanded(
+          child: Text(message, style: TextStyle(color: style.foreground)),
+        ),
+      ],
+    );
+  }
 }
