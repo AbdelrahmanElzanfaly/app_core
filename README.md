@@ -7,6 +7,7 @@ What every feature of an app needs, in one package:
 | `AppConfig`, `Environment` | per-flavor configuration, set once in `main()` |
 | `AppFailure`, `Result`, `FutureUseCase` | one error type; repositories return `Result`, never throw |
 | `BaseBloc`, `StateView`, `SingleEffect` | loading overlay and error snack bars for free; one-shot effects |
+| `AppMessenger`, `AppMessageTheme` | `context.showSuccess/showError/showWarning/showInfo`, styled from the theme |
 | `SessionService` | the signed-in session: secure storage, router refresh, token renewal |
 | `NetworkMonitor`, `NetworkScope`, `ReconnectListener` | whether the servers can be reached; reload a page when they can again |
 | `SessionCache` | small offline copies of read models, emptied when the session ends |
@@ -29,6 +30,66 @@ GET/HEAD/OPTIONS requests (`RetryPolicy()`; writes are never resent), opens
 connections with a 10 s timeout (`NetworkConfig.recommendedConnectTimeout`),
 fails at once while the device has no network, and reports every request's
 outcome to the `NetworkMonitor`.
+
+## Errors
+
+`BaseBloc.handleError(error)` publishes the failure on `errors`, and
+`StateView` shows it as a snack bar. Pass `showMessage: false` for a failure
+the page already presents itself, inline or in a dialog; nothing is
+published, and the feature's own state handling is unchanged:
+
+```dart
+emit(state.copyWith(hasFailed: true));
+handleError(result.error!, showMessage: false); // the page shows RoxRetryView
+```
+
+The default is `true`, so existing calls keep showing their message.
+
+## Messages
+
+Short messages go through one API, from any context below a
+`ScaffoldMessenger`:
+
+```dart
+context.showSuccess(l10n.saved);
+context.showWarning(l10n.outOfStock(name));
+context.showError(message, actionLabel: l10n.retry, onAction: retry);
+context.showInfo(message);
+```
+
+Each `AppMessageType` has its own icon and duration:
+
+| Type | Icon | Duration |
+|---|---|---|
+| success | `check_circle_rounded` | 3 s |
+| warning | `warning_amber_rounded` | 5 s |
+| error | `error_rounded` | 6 s |
+| info | `info_rounded` | 4 s |
+
+A new message replaces the one on screen. `StateView` shows its failures
+with `showError`, so every screen's errors look the same.
+
+The colours come from the theme. Set them once in the app's `ThemeData`:
+
+```dart
+ThemeData(
+  colorScheme: scheme,
+  snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+  extensions: [
+    AppMessageTheme.seeded(scheme, success: brandGreen, warning: brandAmber),
+  ],
+);
+```
+
+`seeded` derives success and warning from their seeds for the scheme's
+brightness, so the text keeps its contrast in light and dark. Error uses the
+scheme's error container, and info Material's own snack bar colours. A theme
+without the extension gets `AppMessageTheme.fallback`.
+
+Call these from a page, typically its `BlocConsumer` listener for a
+`SingleEffect`; a bloc never shows messages itself. A snack bar goes away by
+itself, so a result the user must not miss (a transfer, a payment) belongs
+in a dialog or a result screen.
 
 ## Pull to refresh
 
