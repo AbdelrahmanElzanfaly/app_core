@@ -1,3 +1,5 @@
+import 'dart:ui' show Locale;
+
 import 'package:flutter/foundation.dart';
 
 /// The backends an app can be built against.
@@ -22,6 +24,7 @@ class AppConfig {
     this.apiKey = '',
     this.googleMapsApiKey = '',
     this.persistOfflineCache = false,
+    this.supportedLocales = const [],
   });
 
   final Environment environment;
@@ -44,6 +47,13 @@ class AppConfig {
   /// only) or only in memory for this run. Storing account data on the device
   /// is a security and compliance decision, so it is off unless the app says so.
   final bool persistOfflineCache;
+
+  /// The languages the app is translated into: the list given to
+  /// `MaterialApp.supportedLocales`, in the same order. The language sent
+  /// with each request is resolved against it, so it names the language on
+  /// screen even while the app follows the device. Empty (the default) sends
+  /// a language only once the user has chosen one.
+  final List<Locale> supportedLocales;
 
   static AppConfig? _instance;
 

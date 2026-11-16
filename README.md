@@ -202,3 +202,26 @@ no session is stored. A clear that fails is retried before the cache's next
 read or write; until one succeeds, the cache hands out and keeps nothing. Other
 stores holding the user's data implement `SessionScoped` and are passed to
 `SessionService(scoped: [...])`.
+
+## Language
+
+`AppSettingsCubit` is the client's `LocaleProvider`: it names the language of
+every request in `accept-language`. Declare the app's languages once and give
+the same list to `MaterialApp`, so the request names the language on screen
+even while the app follows the device:
+
+```dart
+AppConfig(
+  // ...
+  supportedLocales: const [Locale('ar'), Locale('en')],
+);
+
+MaterialApp.router(
+  locale: settings.locale,
+  supportedLocales: AppConfig.instance.supportedLocales,
+);
+```
+
+The device's languages are resolved against the list the way the framework
+resolves the app's own locale. With no list declared, a language is sent only
+once the user has chosen one.

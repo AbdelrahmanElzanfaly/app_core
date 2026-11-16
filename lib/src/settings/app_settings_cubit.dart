@@ -9,7 +9,7 @@ import 'app_settings_state.dart';
 /// Theme and language, persisted across launches.
 ///
 /// Also the [LocaleProvider] the HTTP client reads, so `accept-language`
-/// always matches the language on screen.
+/// matches the language on screen: see [currentLanguageTag].
 class AppSettingsCubit extends Cubit<AppSettingsState>
     implements LocaleProvider {
   AppSettingsCubit() : super(const AppSettingsState());
@@ -49,6 +49,23 @@ class AppSettingsCubit extends Cubit<AppSettingsState>
     }
   }
 
+  /// The language on screen: the chosen one, or the device's while none is
+  /// chosen, resolved against [AppConfig.supportedLocales] the way the
+  /// framework resolves the app's own locale.
+  ///
+  /// An app that declares no supported locales sends only a chosen language,
+  /// and none while it follows the device.
   @override
-  String? currentLanguageTag() => state.locale?.toLanguageTag();
+  String? currentLanguageTag() {
+    final chosen = state.locale;
+    final supported = AppConfig.instance.supportedLocales;
+    if (supported.isEmpty) return chosen?.toLanguageTag();
+
+    return basicLocaleListResolution(
+      chosen == null
+          ? WidgetsBinding.instance.platformDispatcher.locales
+          : [chosen],
+      supported,
+    ).toLanguageTag();
+  }
 }
