@@ -1,6 +1,6 @@
 name: app_core
 description: Platform core — configuration, results and errors, base bloc, session and settings.
-version: 0.4.0
+version: 0.4.1
 publish_to: none
 
 environment:
