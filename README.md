@@ -157,11 +157,38 @@ reading: any answer from the server means online. Put it in the tree with
 `NetworkScope(monitor: ..., child: ...)`, usually in `MaterialApp.builder`;
 `NetworkScope.reachabilityOf(context)` is online when there is no scope.
 
+**Looking for itself.** The platform says nothing when Wi-Fi stays connected
+and its internet comes back, and may drop an event while the app is in the
+background. Give the monitor a probe, once the app's client exists and before
+`start()`, and it looks for itself while it is not online and the app is in the
+foreground: after 5, 10 and 20 s, then every 30 s, starting again from 5 s
+after each recovery.
+
+```dart
+getIt<NetworkMonitor>().probe = () => dio.get<void>(
+  '/api/app/config', // cheap, public
+  options: Options(
+    extra: {
+      ConnectivityInterceptor.skipKey: true, // sent whatever the OS says
+      RetryInterceptor.disableKey: true,
+    },
+  ),
+).then((_) {}, onError: (_) {});
+```
+
+Each look reads the interface again, then sends the probe. The monitor does
+not read its result: the client reports the outcome like any request's, so an
+answer means online and a `reconnected`. Without a probe (the default) the
+monitor never looks, and waits for the platform, a return from the background
+or a request.
+
 **Reload on reconnect.** `NetworkMonitor.reconnected` fires, at most once per
 3 s, when a network appears (after a 1 s settle), when the app returns from the
-background while not online, or when a request gets through after a failure. A
-drop shorter than the 2 s grace announces nothing, unless the gate refused a
-request during it. A device page wraps its own `Scaffold`:
+background while not online, or when a request (a probe included) gets through
+after a failure. One that falls inside those 3 s is held back until they end,
+and dropped only if the network is lost again by then. A drop shorter than the
+2 s grace announces nothing, unless the gate refused a request during it. A
+device page wraps its own `Scaffold`:
 
 ```dart
 ReconnectListener(

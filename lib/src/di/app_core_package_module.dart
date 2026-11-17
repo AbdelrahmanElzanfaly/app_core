@@ -24,7 +24,8 @@ import '../settings/app_settings_cubit.dart';
 /// * [SessionCache], in memory or, with [AppConfig.persistOfflineCache], in
 ///   secure storage; emptied by [SessionService] when the session ends
 /// * [NetworkMonitor], also as the [NetworkStatus] and [ReachabilityObserver];
-///   the app calls [NetworkMonitor.start] in `main()`
+///   the app sets [NetworkMonitor.probe] and calls [NetworkMonitor.start] in
+///   `main()`
 /// * [AppSettingsCubit], also as the [LocaleProvider]
 /// * [NetworkErrorConverter]
 /// * the unnamed [Dio], pointed at [AppConfig.baseUrl], renewing on 401,
