@@ -307,11 +307,105 @@ void main() {
       expect(monitor.reachability, NetworkReachability.online);
 
       async.elapse(const Duration(milliseconds: 1));
+      expect(reconnects, 2, reason: 'held back until the cooldown ended');
+
       monitor
         ..onUnreachable()
         ..onReachable();
       async.flushMicrotasks();
+      expect(reconnects, 2, reason: 'a new cooldown runs from the second');
+      async.elapse(const Duration(seconds: 3));
+      expect(reconnects, 3);
+      monitor.dispose();
+    });
+  });
+
+  test('a recovery inside the cooldown is announced when it ends: a request '
+      'refused during a second quick drop still gets its reconnected', () {
+    fakeAsync((async) {
+      setUpMonitor(async);
+
+      // A first drop and return, announced with nothing on screen needing it.
+      interfaces.emit(false);
+      async.elapse(const Duration(seconds: 2));
+      interfaces.emit(true);
+      async.elapse(const Duration(seconds: 1));
+      expect(reconnects, 1);
+
+      // A second drop half a second later, and a request refused during it.
+      async.elapse(const Duration(milliseconds: 500));
+      interfaces.emit(false);
+      async.flushMicrotasks();
+      expect(hasNetwork(async), isFalse, reason: 'the gate refuses');
+      async.elapse(const Duration(milliseconds: 200));
+      interfaces.emit(true);
+
+      // The settle ends 1.7 s after the first announcement.
+      async.elapse(const Duration(seconds: 1));
+      expect(reconnects, 1, reason: 'inside the cooldown');
+      expect(monitor.reachability, NetworkReachability.online);
+
+      async.elapse(const Duration(milliseconds: 1299));
+      expect(reconnects, 1);
+      async.elapse(const Duration(milliseconds: 1));
+      expect(reconnects, 2, reason: 'the refused screen is told');
+      expect(monitor.reconnectedByRequest, isFalse);
+      monitor.dispose();
+    });
+  });
+
+  test('a held-back reconnected is dropped when the network is lost again '
+      'before the cooldown ends', () {
+    fakeAsync((async) {
+      setUpMonitor(async);
+      monitor
+        ..onUnreachable()
+        ..onReachable();
+      async.flushMicrotasks();
+      expect(reconnects, 1);
+
+      async.elapse(const Duration(seconds: 1));
+      monitor
+        ..onUnreachable()
+        ..onReachable();
+      async.elapse(const Duration(seconds: 1));
+      monitor.onUnreachable();
+      async.elapse(const Duration(seconds: 10));
+      expect(reconnects, 1, reason: 'nothing to reload against');
+
+      // The next recovery announces as usual.
+      monitor.onReachable();
+      async.flushMicrotasks();
       expect(reconnects, 2);
+      monitor.dispose();
+    });
+  });
+
+  test('a held-back reconnected is by a request only if every recovery it '
+      'stands for was', () {
+    fakeAsync((async) {
+      setUpMonitor(async);
+      monitor
+        ..onUnreachable()
+        ..onReachable();
+      async.flushMicrotasks();
+      expect(monitor.reconnectedByRequest, isTrue);
+
+      // The network comes back (a resume finding the interface up), then a
+      // request gets through, both inside the cooldown.
+      async.elapse(const Duration(seconds: 1));
+      monitor
+        ..onUnreachable()
+        ..recheck();
+      async.flushMicrotasks();
+      async.elapse(const Duration(milliseconds: 500));
+      monitor
+        ..onUnreachable()
+        ..onReachable();
+      async.elapse(const Duration(milliseconds: 1500));
+
+      expect(reconnects, 2, reason: 'one for both');
+      expect(monitor.reconnectedByRequest, isFalse);
       monitor.dispose();
     });
   });
@@ -564,6 +658,253 @@ void main() {
       expect(monitor.reachability, NetworkReachability.online);
       expect(reconnects, 1);
       monitor.dispose();
+    });
+  });
+
+  group('looking for itself', () {
+    /// When each look sent its request, in elapsed fake time.
+    late List<Duration> looks;
+
+    /// A started monitor in the foreground whose probe records each look
+    /// and then reports [answer], as the client it goes through would.
+    void setUpProbing(
+      FakeAsync async, {
+      bool up = true,
+      void Function()? answer,
+    }) {
+      lifecycle([AppLifecycleState.resumed]);
+      setUpMonitor(async, up: up, start: false);
+      looks = [];
+      monitor.probe = () async {
+        looks.add(async.elapsed);
+        answer?.call();
+      };
+      monitor.start();
+      async.flushMicrotasks();
+    }
+
+    const s5 = Duration(seconds: 5);
+
+    test('without a probe it never looks', () {
+      fakeAsync((async) {
+        lifecycle([AppLifecycleState.resumed]);
+        setUpMonitor(async);
+        monitor.onUnreachable();
+        final readsBefore = interfaces.reads;
+
+        async.elapse(const Duration(minutes: 10));
+
+        expect(monitor.reachability, NetworkReachability.unreachable);
+        expect(interfaces.reads, readsBefore);
+        expect(async.pendingTimers, isEmpty);
+        monitor.dispose();
+      });
+    });
+
+    test('unreachable: looks after 5, 10 and 20 s, then every 30 s', () {
+      fakeAsync((async) {
+        setUpProbing(async, answer: () => monitor.onUnreachable());
+        monitor.onUnreachable();
+
+        async.elapse(const Duration(milliseconds: 4999));
+        expect(looks, isEmpty);
+        async.elapse(const Duration(milliseconds: 1));
+        expect(looks, [s5]);
+
+        async.elapse(const Duration(seconds: 90));
+        expect(looks, [
+          s5,
+          const Duration(seconds: 15),
+          const Duration(seconds: 35),
+          const Duration(seconds: 65),
+          const Duration(seconds: 95),
+        ]);
+        expect(monitor.reachability, NetworkReachability.unreachable);
+        expect(reconnects, 0);
+        monitor.dispose();
+      });
+    });
+
+    test('Wi-Fi stayed connected and its internet came back: the look gets '
+        'an answer, and the app is online with one reconnected', () {
+      fakeAsync((async) {
+        var serverAnswers = false;
+        setUpProbing(
+          async,
+          answer:
+              () =>
+                  serverAnswers
+                      ? monitor.onReachable()
+                      : monitor.onUnreachable(),
+        );
+        monitor.onUnreachable();
+        async.elapse(s5);
+        expect(monitor.reachability, NetworkReachability.unreachable);
+
+        // The interface never changed, so the platform says nothing.
+        serverAnswers = true;
+        async.elapse(const Duration(seconds: 10));
+
+        expect(monitor.reachability, NetworkReachability.online);
+        expect(reconnects, 1);
+        expect(monitor.reconnectedByRequest, isTrue);
+
+        // Online: the looks stop.
+        async.elapse(const Duration(minutes: 10));
+        expect(looks, hasLength(2));
+        expect(async.pendingTimers, isEmpty);
+        monitor.dispose();
+      });
+    });
+
+    test('offline, and the platform never announces the interface coming '
+        'back: the look reads it again and recovers', () {
+      fakeAsync((async) {
+        setUpProbing(async, up: false, answer: () => monitor.onUnreachable());
+        expect(monitor.reachability, NetworkReachability.offline);
+
+        interfaces.up = true;
+        async.elapse(s5);
+        expect(looks, [s5]);
+
+        // As when the platform reports it: online after the 1 s settle.
+        async.elapse(const Duration(seconds: 1));
+        expect(monitor.reachability, NetworkReachability.online);
+        expect(reconnects, 1);
+        monitor.dispose();
+      });
+    });
+
+    test('offline for real: each look is sent anyway and changes nothing', () {
+      fakeAsync((async) {
+        setUpProbing(async, up: false, answer: () => monitor.onUnreachable());
+
+        async.elapse(const Duration(seconds: 15));
+
+        expect(looks, [s5, const Duration(seconds: 15)]);
+        expect(monitor.reachability, NetworkReachability.offline);
+        expect(reconnects, 0);
+        expect(notifications, 1, reason: 'offline, once, at the start');
+        monitor.dispose();
+      });
+    });
+
+    test('a wrong "no network" from the platform: the look that gets an '
+        'answer puts the app online', () {
+      fakeAsync((async) {
+        setUpProbing(async, up: false, answer: () => monitor.onReachable());
+
+        async.elapse(s5);
+
+        expect(monitor.reachability, NetworkReachability.online);
+        expect(reconnects, 1);
+        expect(hasNetwork(async), isTrue, reason: 'the gate is open again');
+        monitor.dispose();
+      });
+    });
+
+    test('the waits start again from 5 s after a recovery', () {
+      fakeAsync((async) {
+        var serverAnswers = false;
+        setUpProbing(
+          async,
+          answer:
+              () =>
+                  serverAnswers
+                      ? monitor.onReachable()
+                      : monitor.onUnreachable(),
+        );
+        monitor.onUnreachable();
+        async.elapse(const Duration(seconds: 15));
+        serverAnswers = true;
+        async.elapse(const Duration(seconds: 20));
+        expect(monitor.reachability, NetworkReachability.online);
+        expect(looks, hasLength(3));
+
+        serverAnswers = false;
+        monitor.onUnreachable();
+        async.elapse(const Duration(milliseconds: 4999));
+        expect(looks, hasLength(3));
+        async.elapse(const Duration(milliseconds: 1));
+        expect(looks, hasLength(4));
+        monitor.dispose();
+      });
+    });
+
+    test('nothing is sent from the background; the looks start again with '
+        'the app', () {
+      fakeAsync((async) {
+        setUpProbing(async, up: false, answer: () => monitor.onUnreachable());
+        lifecycle(toBackground);
+
+        async.elapse(const Duration(minutes: 10));
+        expect(looks, isEmpty);
+        expect(async.pendingTimers, isEmpty);
+
+        lifecycle(toForeground);
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 4999));
+        expect(looks, isEmpty);
+        async.elapse(const Duration(milliseconds: 1));
+        expect(looks, hasLength(1));
+        monitor.dispose();
+      });
+    });
+
+    test('a probe that throws is survived, and the next look still runs', () {
+      fakeAsync((async) {
+        lifecycle([AppLifecycleState.resumed]);
+        setUpMonitor(async, start: false);
+        var calls = 0;
+        monitor.probe = () async {
+          calls++;
+          throw StateError('no client');
+        };
+        monitor.start();
+        async.flushMicrotasks();
+        monitor.onUnreachable();
+
+        async.elapse(const Duration(seconds: 15));
+
+        expect(calls, 2);
+        expect(monitor.reachability, NetworkReachability.unreachable);
+        monitor.dispose();
+      });
+    });
+
+    test('a probe set while not online starts the looks; clearing it stops '
+        'them', () {
+      fakeAsync((async) {
+        lifecycle([AppLifecycleState.resumed]);
+        setUpMonitor(async);
+        monitor.onUnreachable();
+        async.elapse(const Duration(minutes: 1));
+
+        var calls = 0;
+        monitor.probe = () async => calls++;
+        async.elapse(s5);
+        expect(calls, 1);
+
+        monitor.probe = null;
+        async.elapse(const Duration(minutes: 10));
+        expect(calls, 1);
+        expect(async.pendingTimers, isEmpty);
+        monitor.dispose();
+      });
+    });
+
+    test('dispose cancels the pending look', () {
+      fakeAsync((async) {
+        setUpProbing(async, answer: () => monitor.onUnreachable());
+        monitor.onUnreachable();
+        expect(async.pendingTimers, isNotEmpty);
+
+        monitor.dispose();
+
+        expect(async.pendingTimers, isEmpty);
+        async.elapse(const Duration(minutes: 10));
+        expect(looks, isEmpty);
+      });
     });
   });
 
