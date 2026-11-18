@@ -9,7 +9,7 @@ What every feature of an app needs, in one package:
 | `BaseBloc`, `StateView`, `SingleEffect` | loading overlay and error snack bars for free; one-shot effects |
 | `AppMessenger`, `AppMessageTheme` | `context.showSuccess/showError/showWarning/showInfo`, styled from the theme |
 | `SessionService` | the signed-in session: secure storage, router refresh, token renewal |
-| `NetworkMonitor`, `NetworkScope`, `ReconnectListener` | whether the servers can be reached; reload a page when they can again |
+| `NetworkMonitor`, `NetworkScope`, `ReconnectListener` | whether the servers can be reached, and whether they can serve; reload a page when they can again |
 | `SessionCache` | small offline copies of read models, emptied when the session ends |
 | `AppSettingsCubit` | theme and language, persisted |
 | `CoreLocalizations` | Arabic and English copy for every failure type |
@@ -29,7 +29,8 @@ The module's `Dio` is the app's client: it renews on 401, retries failed
 GET/HEAD/OPTIONS requests (`RetryPolicy()`; writes are never resent), opens
 connections with a 10 s timeout (`NetworkConfig.recommendedConnectTimeout`),
 fails at once while the device has no network, and reports every request's
-outcome to the `NetworkMonitor`.
+outcome to the `NetworkMonitor`: whether the server was reached, and whether
+it could serve.
 
 ## Errors
 
@@ -156,6 +157,16 @@ interface is up but the last request got no answer). Real traffic beats the OS
 reading: any answer from the server means online. Put it in the tree with
 `NetworkScope(monitor: ..., child: ...)`, usually in `MaterialApp.builder`;
 `NetworkScope.reachabilityOf(context)` is online when there is no scope.
+
+**Service unavailable.** `NetworkMonitor.isServiceUnavailable` is true while
+the server's last answer was a 5xx (as a request's final answer, after its
+retries): reached, but unable to serve. Its next answer of any other status
+clears it. Read it with `NetworkScope.isServiceUnavailableOf(context)`, false
+when there is no scope, for a banner next to the connection one. Nothing looks
+for a failing service by itself. A banner's Retry calls
+`NetworkScope.maybeOf(context)?.retry()`: it forgets the flag (the next answer
+says whether it still holds) and fires `reconnected`, so every page showing a
+failure reloads.
 
 **Looking for itself.** The platform says nothing when Wi-Fi stays connected
 and its internet comes back, and may drop an event while the app is in the

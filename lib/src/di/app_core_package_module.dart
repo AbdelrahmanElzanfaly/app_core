@@ -23,9 +23,9 @@ import '../settings/app_settings_cubit.dart';
 /// * [SessionService], also as the [TokenStore] and [SessionRefresher]
 /// * [SessionCache], in memory or, with [AppConfig.persistOfflineCache], in
 ///   secure storage; emptied by [SessionService] when the session ends
-/// * [NetworkMonitor], also as the [NetworkStatus] and [ReachabilityObserver];
-///   the app sets [NetworkMonitor.probe] and calls [NetworkMonitor.start] in
-///   `main()`
+/// * [NetworkMonitor], also as the [NetworkStatus], [ReachabilityObserver]
+///   and [ServiceObserver]; the app sets [NetworkMonitor.probe] and calls
+///   [NetworkMonitor.start] in `main()`
 /// * [AppSettingsCubit], also as the [LocaleProvider]
 /// * [NetworkErrorConverter]
 /// * the unnamed [Dio], pointed at [AppConfig.baseUrl], renewing on 401,
@@ -55,6 +55,7 @@ class AppCorePackageModule extends MicroPackageModule {
     );
     gh.lazySingleton<NetworkStatus>(() => gh<NetworkMonitor>());
     gh.lazySingleton<ReachabilityObserver>(() => gh<NetworkMonitor>());
+    gh.lazySingleton<ServiceObserver>(() => gh<NetworkMonitor>());
     gh.lazySingleton<AppSettingsCubit>(() => AppSettingsCubit());
     gh.lazySingleton<LocaleProvider>(() => gh<AppSettingsCubit>());
     gh.lazySingleton<NetworkErrorConverter>(() => const AppFailureConverter());
@@ -75,6 +76,7 @@ class AppCorePackageModule extends MicroPackageModule {
         sessionRefresher: gh<SessionRefresher>(),
         networkStatus: gh<NetworkStatus>(),
         reachabilityObserver: gh<ReachabilityObserver>(),
+        serviceObserver: gh<ServiceObserver>(),
       );
     });
   }
