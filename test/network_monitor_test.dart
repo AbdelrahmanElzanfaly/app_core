@@ -978,4 +978,135 @@ void main() {
       expect(monitor.reachability, NetworkReachability.online);
     });
   });
+
+  group('whether the server can serve', () {
+    test('a 5xx answer says it cannot, the next other answer that it can; '
+        'listeners hear each change once', () {
+      fakeAsync((async) {
+        setUpMonitor(async);
+        expect(monitor.isServiceUnavailable, isFalse);
+
+        monitor
+          ..onServiceUnavailable()
+          ..onServiceUnavailable();
+        expect(monitor.isServiceUnavailable, isTrue);
+        expect(notifications, 1);
+
+        monitor
+          ..onServiceAvailable()
+          ..onServiceAvailable();
+        expect(monitor.isServiceUnavailable, isFalse);
+        expect(notifications, 2);
+        monitor.dispose();
+      });
+    });
+
+    test('it says nothing about reaching the server: still online, nothing '
+        'announced, and nothing looks for it', () {
+      fakeAsync((async) {
+        setUpMonitor(async);
+        var looks = 0;
+        monitor.probe = () async => looks++;
+
+        monitor.onServiceUnavailable();
+        async.elapse(const Duration(minutes: 5));
+
+        expect(monitor.reachability, NetworkReachability.online);
+        expect(monitor.isServiceUnavailable, isTrue);
+        expect(reconnects, 0);
+        // A busy server is not asked again until someone wants it.
+        expect(looks, 0);
+        monitor.dispose();
+      });
+    });
+
+    test('a lost connection keeps what the server last said', () {
+      fakeAsync((async) {
+        setUpMonitor(async);
+        monitor
+          ..onServiceUnavailable()
+          ..onUnreachable();
+
+        expect(monitor.reachability, NetworkReachability.unreachable);
+        expect(monitor.isServiceUnavailable, isTrue);
+
+        // It answers again, and can serve.
+        monitor
+          ..onReachable()
+          ..onServiceAvailable();
+        expect(monitor.reachability, NetworkReachability.online);
+        expect(monitor.isServiceUnavailable, isFalse);
+        monitor.dispose();
+      });
+    });
+
+    test('retry forgets it and announces a reconnect, not by a request, so '
+        'every screen showing a failure reloads', () {
+      fakeAsync((async) {
+        setUpMonitor(async);
+        monitor.onServiceUnavailable();
+
+        monitor.retry();
+        async.flushMicrotasks();
+
+        expect(monitor.isServiceUnavailable, isFalse);
+        expect(reconnects, 1);
+        expect(monitor.reconnectedByRequest, isFalse);
+        expect(monitor.reachability, NetworkReachability.online);
+        monitor.dispose();
+      });
+    });
+
+    test('retry announces with nothing wrong too: the screens decide', () {
+      fakeAsync((async) {
+        setUpMonitor(async);
+
+        monitor.retry();
+        async.flushMicrotasks();
+
+        expect(reconnects, 1);
+        // Nothing changed for a banner to redraw.
+        expect(notifications, 0);
+        monitor.dispose();
+      });
+    });
+
+    test('a second retry inside the cooldown is held back until it ends, '
+        'not dropped', () {
+      fakeAsync((async) {
+        setUpMonitor(async);
+        monitor.retry();
+        async.flushMicrotasks();
+        expect(reconnects, 1);
+
+        // The reload failed again, and the customer taps once more.
+        async.elapse(const Duration(seconds: 1));
+        monitor
+          ..onServiceUnavailable()
+          ..retry();
+        async.flushMicrotasks();
+        expect(reconnects, 1);
+        expect(monitor.isServiceUnavailable, isFalse);
+
+        async.elapse(const Duration(seconds: 2));
+        expect(reconnects, 2);
+        monitor.dispose();
+      });
+    });
+
+    test('after dispose, verdicts and retry change nothing', () {
+      fakeAsync((async) {
+        setUpMonitor(async);
+        monitor.dispose();
+
+        monitor
+          ..onServiceUnavailable()
+          ..retry();
+        async.flushMicrotasks();
+
+        expect(monitor.isServiceUnavailable, isFalse);
+        expect(reconnects, 0);
+      });
+    });
+  });
 }

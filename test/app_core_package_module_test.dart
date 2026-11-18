@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:app_core/app_core.dart';
 import 'package:app_network/app_network.dart';
 import 'package:dio/dio.dart';
@@ -19,12 +21,31 @@ void main() {
 
   tearDown(() => getIt.reset());
 
-  test('one NetworkMonitor is the gate and the observer', () async {
+  test('one NetworkMonitor is the gate and both observers', () async {
     await register();
 
     final monitor = getIt<NetworkMonitor>();
     expect(getIt<NetworkStatus>(), same(monitor));
     expect(getIt<ReachabilityObserver>(), same(monitor));
+    expect(getIt<ServiceObserver>(), same(monitor));
+  });
+
+  test('a 5xx through the client marks the service unavailable, with the '
+      'server still reached; its next good answer clears it', () async {
+    await register();
+    final monitor = getIt<NetworkMonitor>();
+    final server = _StatusServer([500, 200]);
+    final dio = getIt<Dio>()..httpClientAdapter = server;
+
+    await dio.get<void>('/x').then<void>((_) {}, onError: (_) {});
+
+    expect(monitor.isServiceUnavailable, isTrue);
+    expect(monitor.reachability, NetworkReachability.online);
+
+    await dio.get<void>('/x');
+
+    expect(monitor.isServiceUnavailable, isFalse);
+    expect(server.requests, 2);
   });
 
   test(
@@ -87,4 +108,32 @@ void main() {
 
     expect(await cache.read('home'), isNull);
   });
+}
+
+/// Answers each request with the next of [statuses]; the last one repeats.
+class _StatusServer implements HttpClientAdapter {
+  _StatusServer(this.statuses);
+
+  final List<int> statuses;
+  int requests = 0;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests++;
+    final status = statuses.length > 1 ? statuses.removeAt(0) : statuses.first;
+    return ResponseBody.fromString(
+      '{}',
+      status,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

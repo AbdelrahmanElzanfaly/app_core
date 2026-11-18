@@ -320,7 +320,82 @@ void main() {
     });
   });
 
+  group('a retry asked for', () {
+    testWidgets('reloads a page showing a failure, once', (tester) async {
+      await pumpListener(tester, enabled: true, busy: busy);
+      monitor.onServiceUnavailable();
+
+      monitor.retry();
+      await tester.pump();
+
+      expect(reloads, 1);
+      expect(monitor.isServiceUnavailable, isFalse);
+    });
+
+    testWidgets('leaves a page with nothing to recover alone', (tester) async {
+      await pumpListener(tester, enabled: false, busy: busy);
+
+      monitor.retry();
+      await tester.pump();
+
+      expect(reloads, 0);
+    });
+
+    testWidgets('during a load, waits for it to end, then reloads if the '
+        'page still shows a failure', (tester) async {
+      await pumpListener(tester, enabled: true, busy: busy);
+      busy.value = true;
+
+      monitor.retry();
+      await tester.pump();
+      expect(reloads, 0);
+
+      busy.value = false;
+      await tester.pump();
+      expect(reloads, 1);
+    });
+  });
+
   group('NetworkScope', () {
+    testWidgets('isServiceUnavailableOf is false without a scope, and '
+        'dependents rebuild when it changes', (tester) async {
+      bool? seen;
+      await tester.pumpWidget(
+        Builder(
+          builder: (context) {
+            seen = NetworkScope.isServiceUnavailableOf(context);
+            return const SizedBox();
+          },
+        ),
+      );
+      expect(seen, isFalse);
+
+      var builds = 0;
+      await tester.pumpWidget(
+        NetworkScope(
+          monitor: monitor,
+          child: Builder(
+            builder: (context) {
+              builds++;
+              seen = NetworkScope.isServiceUnavailableOf(context);
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      expect(seen, isFalse);
+
+      monitor.onServiceUnavailable();
+      await tester.pump();
+      expect(seen, isTrue);
+      expect(builds, 2);
+
+      monitor.retry();
+      await tester.pump();
+      expect(seen, isFalse);
+      expect(builds, 3);
+    });
+
     testWidgets('reachabilityOf is online without a scope', (tester) async {
       NetworkReachability? seen;
       await tester.pumpWidget(

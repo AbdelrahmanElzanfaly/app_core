@@ -21,10 +21,14 @@ typedef NetworkProbe = Future<void> Function();
 /// recovery the platform never announces (Wi-Fi that stayed connected while
 /// its internet came back) is found without the user asking.
 ///
-/// The NetworkStatus and ReachabilityObserver behind every client, the same
-/// way SessionService is the TokenStore and SessionRefresher.
+/// It also remembers whether the server could serve its last answer
+/// ([isServiceUnavailable]): reached, but answering with a 5xx.
+///
+/// The NetworkStatus, ReachabilityObserver and ServiceObserver behind every
+/// client, the same way SessionService is the TokenStore and
+/// SessionRefresher.
 class NetworkMonitor extends ChangeNotifier
-    implements NetworkStatus, ReachabilityObserver {
+    implements NetworkStatus, ReachabilityObserver, ServiceObserver {
   NetworkMonitor(
     this._interfaces, {
     this.offlineGrace = const Duration(seconds: 2),
@@ -87,6 +91,7 @@ class NetworkMonitor extends ChangeNotifier
   final StreamController<void> _reconnected = StreamController.broadcast();
 
   NetworkReachability _reachability = NetworkReachability.online;
+  bool _serviceUnavailable = false;
 
   /// The raw OS reading that feeds the gate; [reachability] is what is shown.
   bool _interfaceUp = true;
@@ -121,6 +126,11 @@ class NetworkMonitor extends ChangeNotifier
   bool _disposed = false;
 
   NetworkReachability get reachability => _reachability;
+
+  /// The server's last answer was a 5xx: it is reached, and cannot serve.
+  /// Its next answer of any other status clears this, and so does [retry].
+  /// Says nothing about reaching it: that is [reachability].
+  bool get isServiceUnavailable => _serviceUnavailable;
 
   /// Worth trying again: a network appeared (or came back from a short drop
   /// during which a request was refused), the app returned from the
@@ -235,6 +245,31 @@ class NetworkMonitor extends ChangeNotifier
           ? NetworkReachability.unreachable
           : NetworkReachability.offline,
     );
+  }
+
+  @override
+  void onServiceAvailable() => _setServiceUnavailable(false);
+
+  @override
+  void onServiceUnavailable() => _setServiceUnavailable(true);
+
+  /// The user asks to try again, from a banner say: announces [reconnected],
+  /// so every screen showing a failure reloads, as after a recovery.
+  ///
+  /// Optimistic about the service: [isServiceUnavailable] is forgotten, and
+  /// the reloads' own answers say whether it still is. Nothing looks for a
+  /// failing service by itself: a busy server is not asked again until
+  /// someone wants it.
+  void retry() {
+    if (_disposed) return;
+    _setServiceUnavailable(false);
+    _announce(byRequest: false);
+  }
+
+  void _setServiceUnavailable(bool value) {
+    if (_disposed || value == _serviceUnavailable) return;
+    _serviceUnavailable = value;
+    notifyListeners();
   }
 
   void _onInterfaceChanged(bool up) {
