@@ -62,10 +62,32 @@ class _StateViewState<B extends BaseBloc<dynamic, dynamic>>
         builder: (context, isLoading, _) => isLoading
             ? const ColoredBox(
                 color: Color(0x33000000),
-                child: Center(child: CircularProgressIndicator()),
+                child: _Spinner(),
               )
             : const SizedBox.shrink(),
       ),
     ],
+  );
+}
+
+/// The overlay's spinner, kept from the screen around it.
+///
+/// A [CircularProgressIndicator] rebuilds itself on every frame it turns. A
+/// rebuild runs in the build scope of the nearest [LayoutBuilder] above it,
+/// which lays out again for it and repaints everything up to the nearest
+/// layer: the page under the overlay, or, inside a `Scaffold(extendBody:
+/// true)`, the whole scaffold with its bottom bar. This [LayoutBuilder]
+/// measures nothing: it is the spinner's own build scope. Under the
+/// overlay's tight constraints it lays out alone, and in its
+/// [RepaintBoundary] it repaints alone.
+class _Spinner extends StatelessWidget {
+  const _Spinner();
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: LayoutBuilder(
+      builder: (context, constraints) =>
+          const Center(child: CircularProgressIndicator()),
+    ),
   );
 }
